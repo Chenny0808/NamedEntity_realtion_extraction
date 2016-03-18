@@ -64,6 +64,8 @@ def fact_triple_extract(sentence, out_file, out_sentence_element):
     arcs = parser.parse(words, postags)
     #print "\t".join("%d:%s" % (arc.head, arc.relation) for arc in arcs)
     
+    find_flag = False
+    
     NE_list = set()
     for i in range(len(netags)):
         if netags[i][0] == 'S' or netags[i][0] == 'B':
@@ -92,6 +94,7 @@ def fact_triple_extract(sentence, out_file, out_sentence_element):
                 if is_good(e1, NE_list, sentence) and is_good(e2, NE_list, sentence):
                     out_file.write("主语谓语宾语关系\t(%s, %s, %s)\n" % (e1, r, e2))
                     out_file.flush()
+                    find_flag = True
                     e1_start = (sentence.decode('utf-8')).index((e1.decode('utf-8')))
                     r_start = (sentence.decode('utf-8')).index((r.decode('utf-8')))
                     e2_start = (sentence.decode('utf-8')).index((e2.decode('utf-8')))
@@ -122,6 +125,7 @@ def fact_triple_extract(sentence, out_file, out_sentence_element):
                     if temp_string not in e1 and is_good(e1, NE_list, sentence) and is_good(e2, NE_list, sentence):
                         out_file.write("定语后置动宾关系\t(%s, %s, %s)\n" % (e1, r, e2))
                         out_file.flush()
+                        find_flag = True
                         e1_start = (sentence.decode('utf-8')).index((e1.decode('utf-8')))
                         e1_end = e1_start + len(e1.decode('utf-8')) - 1
                         r_start = (sentence.decode('utf-8')).index((r.decode('utf-8')))
@@ -154,6 +158,7 @@ def fact_triple_extract(sentence, out_file, out_sentence_element):
                     if is_good(e1, NE_list, sentence) and is_good(e2, NE_list, sentence):
                         out_file.write("介宾关系主谓动补\t(%s, %s, %s)\n" % (e1, r, e2))
                         out_file.flush()
+                        find_flag = True
                         e1_start = (sentence.decode('utf-8')).index((e1.decode('utf-8')))
                         e1_end = e1_start + len(e1.decode('utf-8')) - 1
                         r_start = (sentence.decode('utf-8')).index((r.decode('utf-8')))
@@ -201,6 +206,7 @@ def fact_triple_extract(sentence, out_file, out_sentence_element):
                     if is_good(e1, NE_list, sentence) and is_good(e2, NE_list, sentence):
                         out_file.write("人名//地名//机构\t(%s, %s, %s)\n" % (e1, r, e2))
                         out_file.flush()
+                        find_flag = True
                         e1_start = (sentence.decode('utf-8')).index((e1.decode('utf-8')))
                         e1_end = e1_start + len(e1.decode('utf-8')) - 1
                         r_start = (sentence.decode('utf-8')).index((r.decode('utf-8')))
@@ -221,6 +227,8 @@ def fact_triple_extract(sentence, out_file, out_sentence_element):
                         out_e2_element.attrib["start"] = str(e2_start)
                         out_e2_element.attrib["length"] = str(len(e2.decode('utf-8')))
                         out_e2_element.text = e2.decode('utf-8')
+    
+    return find_flag;
 
 def build_parse_child_dict(words, postags, arcs):
     """
@@ -294,6 +302,7 @@ def extraction_start_from_xml(in_file_name):
     out_file = open(in_file_name+'.triple.txt', 'w')
     out_docs_root = etree.Element("docs")
     sentence_count = 0
+    find_flag = False
     for each_doc in docs_root:  # 遍历每个doc
         out_doc_element = etree.SubElement(out_docs_root, "doc")
         out_doc_element.attrib["name"] = each_doc.attrib["name"]
@@ -320,10 +329,16 @@ def extraction_start_from_xml(in_file_name):
                         out_s_text_element = etree.SubElement(out_sentence_element, "s_text")
                         out_s_text_element.text = u_sentence
                         try:
-                            fact_triple_extract(sentence, out_file, out_sentence_element)
+                            find_flag = fact_triple_extract(sentence, out_file, out_sentence_element)
+                            if find_flag == False:
+                                out_sentence_element.xpath("..")[0].remove(out_sentence_element)
                             out_file.flush()
                         except:
                             pass
+            if find_flag == False:
+                out_par_element.xpath("..")[0].remove(out_par_element)
+        if find_flag == False:
+            out_doc_element.xpath("..")[0].remove(out_doc_element)
     tree = etree.ElementTree(out_docs_root)
     tree.write(in_file_name+".triple.xml", pretty_print=True, xml_declaration=True, encoding='utf-8')
 if __name__ == "__main__":
