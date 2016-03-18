@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding=utf-8
 """
-文本中事实三元组抽取
-python *.py input.txt output.txt corpus.txt begin_line end_line
+基于句法依存关系抽取文本中的实体关系三元组
+python *.py input.txt output.txt corpus.txt
 """
 
 __author__ = "tianwen jiang"
@@ -12,7 +12,8 @@ MODELDIR="/data/ltp/ltp-models/3.3.0/ltp_data"
 
 import sys
 import os
- 
+
+from lxml import etree 
 from pyltp import Segmentor, Postagger, Parser, NamedEntityRecognizer
 
 print "正在加载LTP模型... ..."
@@ -49,58 +50,7 @@ if len(sys.argv) > 2:
 if len(sys.argv) > 3:
     corpus_file_name = sys.argv[3]
 
-if len(sys.argv) > 4:
-    begin_line = int(sys.argv[4])
-
-if len(sys.argv) > 5:
-    end_line = int(sys.argv[5])
-
-def extraction_start(in_file_name, out_file_name, begin_line, end_line):
-    """
-    事实三元组抽取的总控程序
-    Args:
-        in_file_name: 输入文件的名称
-        #out_file_name: 输出文件的名称
-        begin_line: 读文件的起始行
-        end_line: 读文件的结束行
-    """
-    in_file = open(in_file_name, 'r')
-    out_file = open(out_file_name, 'a')
-    corpus_file = open(corpus_file_name, 'a')
-    
-    line_index = 1
-    sentence_number = 0
-    text_line = in_file.readline()
-    while text_line:
-        if line_index < begin_line:
-            text_line = in_file.readline()
-            line_index += 1
-            continue
-        if end_line != 0 and line_index > end_line:
-            break
-        sentence = text_line.strip()
-        if sentence == "" or len(sentence) > 1000:
-            text_line = in_file.readline()
-            line_index += 1
-            continue
-        try:
-            flag = fact_triple_extract(sentence, out_file, corpus_file)
-            out_file.flush()
-            if flag:
-                corpus_file.write("\n")
-                corpus_file.flush()
-        except:
-            pass
-        sentence_number += 1
-        if sentence_number % 50 == 0:
-            print "%d done" % (sentence_number)
-        text_line = in_file.readline()
-        line_index += 1
-    in_file.close()
-    out_file.close()
-    corpus_file.close()
-
-def fact_triple_extract(sentence, out_file, corpus_file):
+def fact_triple_extract(sentence, out_file, out_sentence_element):
     """
     对于给定的句子进行事实三元组抽取
     Args:
@@ -142,17 +92,23 @@ def fact_triple_extract(sentence, out_file, corpus_file):
                 if is_good(e1, NE_list, sentence) and is_good(e2, NE_list, sentence):
                     out_file.write("主语谓语宾语关系\t(%s, %s, %s)\n" % (e1, r, e2))
                     out_file.flush()
-                    if not corpus_flag:
-                        corpus_file.write(sentence)
-                        corpus_flag = True
                     e1_start = (sentence.decode('utf-8')).index((e1.decode('utf-8')))
-                    e1_end = e1_start + len(e1.decode('utf-8')) - 1
                     r_start = (sentence.decode('utf-8')).index((r.decode('utf-8')))
-                    r_end = r_start + len(r.decode('utf-8')) - 1
                     e2_start = (sentence.decode('utf-8')).index((e2.decode('utf-8')))
-                    e2_end = e2_start + len(e2.decode('utf-8')) - 1
-                    corpus_file.write("$$3==%s/%d-%d==%s/%d-%d==%s/%d-%d" % (e1, e1_start, e1_end, r, r_start, r_end, e2, e2_start, e2_end))
-                    corpus_file.flush()
+                    out_triple_element = etree.SubElement(out_sentence_element, "triple")
+                    out_triple_element.attrib["type"] = u"主语谓语宾语关系"
+                    out_e1_element = etree.SubElement(out_triple_element, "head_entity")
+                    out_e1_element.attrib["start"] = str(e1_start)
+                    out_e1_element.attrib["length"] = str(len(e1.decode('utf-8')))
+                    out_e1_element.text = e1.decode('utf-8')
+                    out_r_element = etree.SubElement(out_triple_element, "head_entity")
+                    out_r_element.attrib["start"] = str(r_start)
+                    out_r_element.attrib["length"] = str(len(r.decode('utf-8')))
+                    out_r_element.text = r.decode('utf-8')
+                    out_e2_element = etree.SubElement(out_triple_element, "head_entity")
+                    out_e2_element.attrib["start"] = str(e2_start)
+                    out_e2_element.attrib["length"] = str(len(e2.decode('utf-8')))
+                    out_e2_element.text = e2.decode('utf-8')
             # 定语后置，动宾关系
             if arcs[index].relation == 'ATT':
                 if child_dict.has_key('VOB'):
@@ -166,17 +122,26 @@ def fact_triple_extract(sentence, out_file, corpus_file):
                     if temp_string not in e1 and is_good(e1, NE_list, sentence) and is_good(e2, NE_list, sentence):
                         out_file.write("定语后置动宾关系\t(%s, %s, %s)\n" % (e1, r, e2))
                         out_file.flush()
-                        if not corpus_flag:
-                            corpus_file.write(sentence)
-                            corpus_flag = True
                         e1_start = (sentence.decode('utf-8')).index((e1.decode('utf-8')))
                         e1_end = e1_start + len(e1.decode('utf-8')) - 1
                         r_start = (sentence.decode('utf-8')).index((r.decode('utf-8')))
                         r_end = r_start + len(r.decode('utf-8')) - 1
                         e2_start = (sentence.decode('utf-8')).index((e2.decode('utf-8')))
                         e2_end = e2_start + len(e2.decode('utf-8')) - 1
-                        corpus_file.write("$$3==%s/%d-%d==%s/%d-%d==%s/%d-%d" % (e1, e1_start, e1_end, r, r_start, r_end, e2, e2_start, e2_end))
-                        corpus_file.flush()
+                        out_triple_element = etree.SubElement(out_sentence_element, "triple")
+                        out_triple_element.attrib["type"] = u"定语后置动宾关系"
+                        out_e1_element = etree.SubElement(out_triple_element, "head_entity")
+                        out_e1_element.attrib["start"] = str(e1_start)
+                        out_e1_element.attrib["length"] = str(len(e1.decode('utf-8')))
+                        out_e1_element.text = e1.decode('utf-8')
+                        out_r_element = etree.SubElement(out_triple_element, "head_entity")
+                        out_r_element.attrib["start"] = str(r_start)
+                        out_r_element.attrib["length"] = str(len(r.decode('utf-8')))
+                        out_r_element.text = r.decode('utf-8')
+                        out_e2_element = etree.SubElement(out_triple_element, "head_entity")
+                        out_e2_element.attrib["start"] = str(e2_start)
+                        out_e2_element.attrib["length"] = str(len(e2.decode('utf-8')))
+                        out_e2_element.text = e2.decode('utf-8')
             # 含有介宾关系的主谓动补关系
             if child_dict.has_key('SBV') and child_dict.has_key('CMP'):
                 #e1 = words[child_dict['SBV'][0]]
@@ -189,17 +154,26 @@ def fact_triple_extract(sentence, out_file, corpus_file):
                     if is_good(e1, NE_list, sentence) and is_good(e2, NE_list, sentence):
                         out_file.write("介宾关系主谓动补\t(%s, %s, %s)\n" % (e1, r, e2))
                         out_file.flush()
-                        if not corpus_flag:
-                            corpus_file.write(sentence)
-                            corpus_flag = True
                         e1_start = (sentence.decode('utf-8')).index((e1.decode('utf-8')))
                         e1_end = e1_start + len(e1.decode('utf-8')) - 1
                         r_start = (sentence.decode('utf-8')).index((r.decode('utf-8')))
                         r_end = r_start + len(r.decode('utf-8')) - 1
                         e2_start = (sentence.decode('utf-8')).index((e2.decode('utf-8')))
                         e2_end = e2_start + len(e2.decode('utf-8')) - 1
-                        corpus_file.write("$$3==%s/%d-%d==%s/%d-%d==%s/%d-%d" % (e1, e1_start, e1_end, r, r_start, r_end, e2, e2_start, e2_end))
-                        corpus_file.flush()
+                        out_triple_element = etree.SubElement(out_sentence_element, "triple")
+                        out_triple_element.attrib["type"] = u"介宾关系主谓动补"
+                        out_e1_element = etree.SubElement(out_triple_element, "head_entity")
+                        out_e1_element.attrib["start"] = str(e1_start)
+                        out_e1_element.attrib["length"] = str(len(e1.decode('utf-8')))
+                        out_e1_element.text = e1.decode('utf-8')
+                        out_r_element = etree.SubElement(out_triple_element, "head_entity")
+                        out_r_element.attrib["start"] = str(r_start)
+                        out_r_element.attrib["length"] = str(len(r.decode('utf-8')))
+                        out_r_element.text = r.decode('utf-8')
+                        out_e2_element = etree.SubElement(out_triple_element, "head_entity")
+                        out_e2_element.attrib["start"] = str(e2_start)
+                        out_e2_element.attrib["length"] = str(len(e2.decode('utf-8')))
+                        out_e2_element.text = e2.decode('utf-8')
         # 尝试抽取命名实体有关的三元组
         if netags[index][0] == 'S' or netags[index][0] == 'B':
             ni = index
@@ -227,18 +201,26 @@ def fact_triple_extract(sentence, out_file, corpus_file):
                     if is_good(e1, NE_list, sentence) and is_good(e2, NE_list, sentence):
                         out_file.write("人名//地名//机构\t(%s, %s, %s)\n" % (e1, r, e2))
                         out_file.flush()
-                        if not corpus_flag:
-                            corpus_file.write(sentence)
-                            corpus_flag = True
                         e1_start = (sentence.decode('utf-8')).index((e1.decode('utf-8')))
                         e1_end = e1_start + len(e1.decode('utf-8')) - 1
                         r_start = (sentence.decode('utf-8')).index((r.decode('utf-8')))
                         r_end = r_start + len(r.decode('utf-8')) - 1
                         e2_start = (sentence.decode('utf-8')).index((e2.decode('utf-8')))
                         e2_end = e2_start + len(e2.decode('utf-8')) - 1
-                        corpus_file.write("$$3==%s/%d-%d==%s/%d-%d==%s/%d-%d" % (e1, e1_start, e1_end, r, r_start, r_end, e2, e2_start, e2_end))
-                        corpus_file.flush()
-    return corpus_flag
+                        out_triple_element = etree.SubElement(out_sentence_element, "triple")
+                        out_triple_element.attrib["type"] = u"人名//地名//机构"
+                        out_e1_element = etree.SubElement(out_triple_element, "head_entity")
+                        out_e1_element.attrib["start"] = str(e1_start)
+                        out_e1_element.attrib["length"] = str(len(e1.decode('utf-8')))
+                        out_e1_element.text = e1.decode('utf-8')
+                        out_r_element = etree.SubElement(out_triple_element, "head_entity")
+                        out_r_element.attrib["start"] = str(r_start)
+                        out_r_element.attrib["length"] = str(len(r.decode('utf-8')))
+                        out_r_element.text = r.decode('utf-8')
+                        out_e2_element = etree.SubElement(out_triple_element, "head_entity")
+                        out_e2_element.attrib["start"] = str(e2_start)
+                        out_e2_element.attrib["length"] = str(len(e2.decode('utf-8')))
+                        out_e2_element.text = e2.decode('utf-8')
 
 def build_parse_child_dict(words, postags, arcs):
     """
@@ -304,8 +286,45 @@ def is_good(e, NE_list, sentence):
             return True
     return False
 
-
-
+def extraction_start_from_xml(in_file_name):
+    """
+    提取文本中的text标签的内容，进行实体关系三元组抽取
+    """
+    docs_root = etree.parse(in_file_name).getroot()
+    out_file = open(in_file_name+'.triple.txt', 'w')
+    out_docs_root = etree.Element("docs")
+    sentence_count = 0
+    for each_doc in docs_root:  # 遍历每个doc
+        out_doc_element = etree.SubElement(out_docs_root, "doc")
+        out_doc_element.attrib["name"] = each_doc.attrib["name"]
+        out_doc_element.attrib["url"] = each_doc.attrib["url"]
+        out_doc_element.attrib["id"] = each_doc.attrib["id"]
+        out_doc_element.attrib["baike_id"] = each_doc.attrib["baike_id"]
+        out_doc_element.attrib["time"] = each_doc.attrib["time"]
+        for each_par in each_doc:
+            out_par_element = etree.SubElement(out_doc_element, "par")
+            for element in each_par:
+                if element.tag == "text":  
+                    text = element.text.encode('utf-8')
+                    text = text.replace("。","。\n").replace("！","！\n").replace("？","？\n")
+                    sentences = text.split("\n")
+                    for sentence in sentences:
+                        sentence = sentence.strip()
+                        if sentence == '':
+                            continue
+                        sentence_count += 1
+                        if sentence_count%1000 == 0:
+                            print sentence_count,"sentences done."
+                        u_sentence = sentence.decode('utf-8')
+                        out_sentence_element = etree.SubElement(out_par_element, "sentence")
+                        out_s_text_element = etree.SubElement(out_sentence_element, "s_text")
+                        out_s_text_element.text = u_sentence
+                        try:
+                            fact_triple_extract(sentence, out_file, out_sentence_element)
+                            out_file.flush()
+                        except:
+                            pass
+    tree = etree.ElementTree(out_docs_root)
+    tree.write(in_file_name+".triple.xml", pretty_print=True, xml_declaration=True, encoding='utf-8')
 if __name__ == "__main__":
-    #extraction_start(in_file_name, out_file_name, begin_line, end_line)
-    extraction_start(in_file_name, out_file_name, begin_line, end_line)
+    extraction_start_from_xml(in_file_name)
